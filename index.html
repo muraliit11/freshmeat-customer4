@@ -1370,6 +1370,8 @@ function handleRestoreFile(event) {
       event.target.value = "";
     }
   };
+    reader.readAsArrayBuffer(file);
+}
 
   function init() {
     loadState();
