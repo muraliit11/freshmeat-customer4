@@ -1362,7 +1362,7 @@ function handleRestoreFile(event) {
 
       saveState();
       renderGrid();
-      showToast(exportedAt ? `Restored backup from ${exportedAt.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}.` : "Restored from backup.");
+            showToast(exportedAt ? `Restored backup from ${exportedAt.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}.` : "Restored from backup.");
     } catch (err) {
       console.error(err);
       showToast("Couldn't read that file. Is it a FreshMeat backup?");
@@ -1370,8 +1370,6 @@ function handleRestoreFile(event) {
       event.target.value = "";
     }
   };
-  reader.readAsArrayBuffer(file);
-}
 
   function init() {
     loadState();
