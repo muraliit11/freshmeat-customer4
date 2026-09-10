@@ -1295,56 +1295,83 @@
     showToast("Backup downloaded.");
   }
 
-  function handleRestoreFile(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target.result);
-        const wb = XLSX.read(data, { type: "array" });
+function handleRestoreFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: "array" });
 
-        if (wb.SheetNames.includes("Products")) {
-          const rows = XLSX.utils.sheet_to_json(wb.Sheets["Products"]);
-          if (rows.length) {
-            PRODUCTS.length = 0;
-            rows.forEach((r) => PRODUCTS.push({
-              id: String(r.id), name: String(r.name), unit: String(r.unit),
-              price: Number(r.price) || 0, emoji: String(r.emoji || "🍽️"),
-              addedAt: Number(r.addedAt) || 0,
-            }));
-            nextAddedAt = Math.max(...PRODUCTS.map((p) => p.addedAt), 0) + 1;
-          }
+      // --- Peek at Meta sheet first to warn before overwriting anything ---
+      let exportedAt = null;
+      if (wb.SheetNames.includes("Meta")) {
+        const metaRows = XLSX.utils.sheet_to_json(wb.Sheets["Meta"]);
+        if (metaRows[0] && metaRows[0].exportedAt) {
+          exportedAt = new Date(metaRows[0].exportedAt);
         }
-
-        if (wb.SheetNames.includes("Bill History")) {
-          const rows = XLSX.utils.sheet_to_json(wb.Sheets["Bill History"]);
-          const grouped = {};
-          rows.forEach((r) => {
-            const no = r["Invoice No"];
-            if (!grouped[no]) {
-              grouped[no] = { no, date: r["Date"], time: r["Time"], total: Number(r["Bill Total"]) || 0, items: [] };
-            }
-            grouped[no].items.push({ name: r["Item"], qty: Number(r["Qty"]) || 0, price: Number(r["Price"]) || 0 });
-          });
-          billHistory = Object.values(grouped);
-        }
-
-        if (wb.SheetNames.includes("Meta")) {
-          const rows = XLSX.utils.sheet_to_json(wb.Sheets["Meta"]);
-          if (rows[0] && typeof rows[0].invoiceCounter === "number") invoiceCounter = rows[0].invoiceCounter;
-        }
-
-        saveState();
-        renderGrid();
-        showToast("Restored from backup.");
-      } catch (err) {
-        console.error(err);
-        showToast("Couldn't read that file. Is it a FreshMeat backup?");
-      } finally {
-        event.target.value = "";
       }
-    };
+
+      let warningMsg = "Restoring this backup will overwrite your current products, bill history, and invoice numbering on this device.";
+      if (exportedAt && !isNaN(exportedAt)) {
+        const daysOld = Math.floor((Date.now() - exportedAt.getTime()) / (1000 * 60 * 60 * 24));
+        const dateStr = exportedAt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+        if (daysOld <= 0) {
+          warningMsg = `This backup was taken today (${dateStr}). Restoring will overwrite current data on this device.`;
+        } else {
+          warningMsg = `This backup is ${daysOld} day${daysOld > 1 ? "s" : ""} old (from ${dateStr}). Restoring will erase any bills, price changes, or new items added since then — this cannot be undone.`;
+        }
+      }
+
+      if (!confirm(warningMsg + "\n\nContinue with restore?")) {
+        event.target.value = "";
+        return;
+      }
+
+      if (wb.SheetNames.includes("Products")) {
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Products"]);
+        if (rows.length) {
+          PRODUCTS.length = 0;
+          rows.forEach((r) => PRODUCTS.push({
+            id: String(r.id), name: String(r.name), unit: String(r.unit),
+            price: Number(r.price) || 0, emoji: String(r.emoji || "🍽️"),
+            addedAt: Number(r.addedAt) || 0,
+          }));
+          nextAddedAt = Math.max(...PRODUCTS.map((p) => p.addedAt), 0) + 1;
+        }
+      }
+
+      if (wb.SheetNames.includes("Bill History")) {
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Bill History"]);
+        const grouped = {};
+        rows.forEach((r) => {
+          const no = r["Invoice No"];
+          if (!grouped[no]) {
+            grouped[no] = { no, date: r["Date"], time: r["Time"], total: Number(r["Bill Total"]) || 0, items: [] };
+          }
+          grouped[no].items.push({ name: r["Item"], qty: Number(r["Qty"]) || 0, price: Number(r["Price"]) || 0 });
+        });
+        billHistory = Object.values(grouped);
+      }
+
+      if (wb.SheetNames.includes("Meta")) {
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets["Meta"]);
+        if (rows[0] && typeof rows[0].invoiceCounter === "number") invoiceCounter = rows[0].invoiceCounter;
+      }
+
+      saveState();
+      renderGrid();
+      showToast(exportedAt ? `Restored backup from ${exportedAt.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}.` : "Restored from backup.");
+    } catch (err) {
+      console.error(err);
+      showToast("Couldn't read that file. Is it a FreshMeat backup?");
+    } finally {
+      event.target.value = "";
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
     reader.readAsArrayBuffer(file);
   }
 
