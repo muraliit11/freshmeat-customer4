@@ -10,7 +10,7 @@ const firebaseConfig = {
 };
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
 
 const app = initializeApp(firebaseConfig);
@@ -24,6 +24,21 @@ const SUBSCRIPTION_PRICE = 20; // in rupees
 const UPI_ID = "9940491206@upi"; // replace with your actual UPI ID
 
 let confirmationResult = null;
+
+// Waits until Firebase Auth has settled on a definite state (signed in or
+// not) before we touch Firestore. This avoids a race where a Firestore
+// call fires before Firestore's internal auth listener has picked up a
+// freshly-signed-in user's credentials, which otherwise shows up as a
+// "Missing or insufficient permissions" error even though the user IS
+// correctly signed in.
+function waitForAuthUser() {
+  return new Promise((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe();
+      resolve(user);
+    });
+  });
+}
 
 function getVerifiedPhone() {
   return localStorage.getItem("fm_verifiedPhone");
@@ -134,6 +149,9 @@ function showOtpEntryScreen(phone) {
 
     try {
       await confirmationResult.confirm(code);
+      // Wait for Firestore's internal auth listener to catch up with the
+      // freshly-signed-in user before we make any Firestore calls.
+      await waitForAuthUser();
       setVerifiedPhone(phone);
       removeOverlay();
       checkAccess();
@@ -170,6 +188,10 @@ async function checkAccess() {
     showPhoneEntryScreen();
     return;
   }
+  // On a fresh page load (not right after OTP verify), also wait for
+  // Firebase Auth to finish restoring the persisted session before
+  // touching Firestore, for the same race-condition reason as above.
+  await waitForAuthUser();
   const trialData = await getOrCreateTrialDoc(phone);
   if (!isAccessAllowed(trialData)) {
     showPaywallScreen(phone);
