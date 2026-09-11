@@ -191,7 +191,15 @@ async function checkAccess() {
   // On a fresh page load (not right after OTP verify), also wait for
   // Firebase Auth to finish restoring the persisted session before
   // touching Firestore, for the same race-condition reason as above.
-  await waitForAuthUser();
+  const debugUser = await waitForAuthUser();
+  console.log("DEBUG auth.currentUser:", debugUser);
+  console.log("DEBUG uid:", debugUser && debugUser.uid);
+  console.log("DEBUG phoneNumber on user object:", debugUser && debugUser.phoneNumber);
+  if (debugUser) {
+    const tokenResult = await debugUser.getIdTokenResult(true);
+    console.log("DEBUG ID token claims:", tokenResult.claims);
+  }
+  console.log("DEBUG phone variable used as doc ID:", phone);
   const trialData = await getOrCreateTrialDoc(phone);
   if (!isAccessAllowed(trialData)) {
     showPaywallScreen(phone);
