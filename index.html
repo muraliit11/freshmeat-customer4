@@ -1402,6 +1402,16 @@ function handleRestoreFile(event) {
   }
 }
 
+async function persistProducts() {
+  try {
+    await window.saveSharedProducts(PRODUCTS, nextAddedAt);
+  } catch (e) {
+    console.warn("Could not save shared prices:", e);
+    showToast("Saved locally, but couldn't sync online. Check connection.");
+  }
+  saveState();
+}
+
 async function init() {
   // Wait for the head module script to finish attaching window.fetchSharedProducts
   let attempts = 0;
