@@ -1121,6 +1121,8 @@
     if (total === 0) return;
     document.getElementById("pay-amount").textContent = "₹" + total;
     document.getElementById("pay-invoice-no").textContent = currentInvoice ? currentInvoice.no : "";
+    document.getElementById("payee-name").textContent = UPI_NAME;
+    document.getElementById("upi-id-text").textContent = UPI_ID;
     const upiUrl = `upi://pay?pa=${encodeURIComponent(UPI_ID)}&pn=${encodeURIComponent(UPI_NAME)}&am=${total}&cu=INR&tn=${encodeURIComponent(currentInvoice ? currentInvoice.no : "")}`;
     const holder = document.getElementById("qr-holder");
     holder.innerHTML = "";
