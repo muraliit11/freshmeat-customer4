@@ -788,25 +788,20 @@
     }
   }
 
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const state = JSON.parse(raw);
-      if (Array.isArray(state.products) && state.products.length) {
-        PRODUCTS.length = 0;
-        state.products.forEach((p) => PRODUCTS.push(p));
-      }
-      if (typeof state.nextAddedAt === "number") nextAddedAt = state.nextAddedAt;
-      if (Array.isArray(state.billHistory)) billHistory = state.billHistory;
-      if (typeof state.invoiceCounter === "number") invoiceCounter = state.invoiceCounter;
-      if (state.cart && typeof state.cart === "object") {
-        Object.keys(state.cart).forEach((id) => { cart[id] = state.cart[id]; });
-      }
-    } catch (e) {
-      console.warn("Could not load saved state:", e);
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const state = JSON.parse(raw);
+    if (Array.isArray(state.billHistory)) billHistory = state.billHistory;
+    if (typeof state.invoiceCounter === "number") invoiceCounter = state.invoiceCounter;
+    if (state.cart && typeof state.cart === "object") {
+      Object.keys(state.cart).forEach((id) => { cart[id] = state.cart[id]; });
     }
+  } catch (e) {
+    console.warn("Could not load saved state:", e);
   }
+}
 
   function formatDateTime(d) {
     const date = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
