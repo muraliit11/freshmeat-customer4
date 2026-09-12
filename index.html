@@ -549,9 +549,10 @@
   }
   .reset-checkbox-row input { margin-top: 2px; }
 </style>
-  <script type="module">
+ <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyBFxIFfgtTYT8vb42rPIQ-eJClzm73xttw",
@@ -564,8 +565,10 @@
 
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
+  const db = getFirestore(app);
 
   const ADMIN_EMAIL = "customer4@freshmeat.local";
+  const SHOP_ID = "customer4"; // unique per customer deployment — change this for customer1/2/3 later
 
   window.firebaseAdminSignIn = async function (enteredPassword) {
     return signInWithEmailAndPassword(auth, ADMIN_EMAIL, enteredPassword);
@@ -576,6 +579,19 @@
   };
 
   window.ADMIN_EMAIL_DISPLAY = ADMIN_EMAIL;
+
+  // ---- Shared product catalog (Firestore-backed — every visitor sees the same live prices) ----
+  window.fetchSharedProducts = async function () {
+    const ref = doc(db, "shopProducts", SHOP_ID);
+    const snap = await getDoc(ref);
+    return snap.exists() ? snap.data() : null;
+  };
+
+  window.saveSharedProducts = async function (productsArray, nextAddedAtValue) {
+    const ref = doc(db, "shopProducts", SHOP_ID);
+    await setDoc(ref, { products: productsArray, nextAddedAt: nextAddedAtValue, updatedAt: Date.now() });
+  };
+</script>
 </script>
 <script type="module" src="freshmeat-paywall.js"></script>
 </head>
@@ -1046,7 +1062,7 @@
     renderPriceBlock(id);
     // Keep the cart in sync with the updated name/unit/price
     if (cart[id]) renderDrawer();
-    saveState();
+    persistProducts();
     showToast("Item updated.");
   }
 
@@ -1262,7 +1278,7 @@
     PRODUCTS.push({ id: slugify(name), name, unit, price, emoji, addedAt: nextAddedAt++ });
     closeAddItemModal();
     renderGrid();
-    saveState();
+    persistProducts();
     showToast(`${name} added.`);
   }
 
@@ -1376,12 +1392,39 @@ function handleRestoreFile(event) {
     reader.readAsArrayBuffer(file);
 }
 
-  function init() {
-    loadState();
-    renderGrid();
+  async function loadSharedProducts() {
+  try {
+    const shared = await window.fetchSharedProducts();
+    if (shared && Array.isArray(shared.products) && shared.products.length) {
+      PRODUCTS.length = 0;
+      shared.products.forEach((p) => PRODUCTS.push(p));
+      if (typeof shared.nextAddedAt === "number") nextAddedAt = shared.nextAddedAt;
+    } else {
+      // First time ever for this shop — publish current defaults so Firestore has a doc to read next time.
+      await window.saveSharedProducts(PRODUCTS, nextAddedAt);
+    }
+  } catch (e) {
+    console.warn("Could not load shared prices, showing local defaults:", e);
   }
+}
 
-  init();
+async function persistProducts() {
+  try {
+    await window.saveSharedProducts(PRODUCTS, nextAddedAt);
+  } catch (e) {
+    console.warn("Could not save shared prices:", e);
+    showToast("Saved locally, but couldn't sync online. Check connection.");
+  }
+  saveState();
+}
+
+async function init() {
+  await loadSharedProducts();
+  loadState(); // still restores cart/bill history/invoice counter from this device
+  renderGrid();
+}
+
+init();
 
   document.getElementById("admin-password-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") submitAdminPassword();
