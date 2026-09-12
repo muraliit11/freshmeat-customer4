@@ -10,7 +10,7 @@ const firebaseConfig = {
 };
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
 
 const app = initializeApp(firebaseConfig);
@@ -19,26 +19,18 @@ const db = getFirestore(app);
 
 // ---- Trial & Paywall Logic (Phone-verified, Firestore-backed) ----
 const TRIAL_HOURS = 1;
-const SUBSCRIPTION_HOURS = 24;
-const SUBSCRIPTION_PRICE = 20; // in rupees
-const UPI_ID = "9940491206@upi"; // replace with your actual UPI ID
+const PLATFORM_UPI_ID = "9940491206@upi"; // platform owner's UPI ID — access-fee payments always go here, same across all customer deployments, do not change per customer
+
+// Access-fee tiers. All paid to PLATFORM_UPI_ID (this is the platform's own
+// access fee, separate from any product/order payment the shop owner collects
+// on their own UPI ID elsewhere in the app).
+const TIERS = [
+  { id: "day",   label: "1 Day",   price: 20,   hours: 24 },
+  { id: "month", label: "1 Month", price: 200,  hours: 24 * 30 },
+  { id: "year",  label: "1 Year",  price: 2000, hours: 24 * 365 }
+];
 
 let confirmationResult = null;
-
-// Waits until Firebase Auth has settled on a definite state (signed in or
-// not) before we touch Firestore. This avoids a race where a Firestore
-// call fires before Firestore's internal auth listener has picked up a
-// freshly-signed-in user's credentials, which otherwise shows up as a
-// "Missing or insufficient permissions" error even though the user IS
-// correctly signed in.
-function waitForAuthUser() {
-  return new Promise((resolve) => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      unsubscribe();
-      resolve(user);
-    });
-  });
-}
 
 function getVerifiedPhone() {
   return localStorage.getItem("fm_verifiedPhone");
@@ -59,10 +51,10 @@ async function getOrCreateTrialDoc(phone) {
   return data;
 }
 
-async function markPaid(phone) {
-  const unlockUntil = Date.now() + SUBSCRIPTION_HOURS * 60 * 60 * 1000;
+async function markPaid(phone, tier) {
+  const unlockUntil = Date.now() + tier.hours * 60 * 60 * 1000;
   const ref = doc(db, "trials", phone);
-  await setDoc(ref, { unlockUntil }, { merge: true });
+  await setDoc(ref, { unlockUntil, lastTier: tier.id }, { merge: true });
   return unlockUntil;
 }
 
@@ -149,9 +141,6 @@ function showOtpEntryScreen(phone) {
 
     try {
       await confirmationResult.confirm(code);
-      // Wait for Firestore's internal auth listener to catch up with the
-      // freshly-signed-in user before we make any Firestore calls.
-      await waitForAuthUser();
       setVerifiedPhone(phone);
       removeOverlay();
       checkAccess();
@@ -162,24 +151,48 @@ function showOtpEntryScreen(phone) {
   });
 }
 
+function renderTierOptionsHtml(selectedTierId) {
+  return TIERS.map(tier => `
+    <label style="display:flex; align-items:center; gap:10px; padding:10px 12px; margin-bottom:8px; border:1px solid ${tier.id === selectedTierId ? '#7A2323' : '#ccc'}; border-radius:8px; text-align:left; cursor:pointer;">
+      <input type="radio" name="fm-tier" value="${tier.id}" ${tier.id === selectedTierId ? "checked" : ""} style="accent-color:#7A2323;" />
+      <span style="flex:1;">${tier.label}</span>
+      <strong>₹${tier.price}</strong>
+    </label>
+  `).join("");
+}
+
 function showPaywallScreen(phone) {
-  const upiLink = `upi://pay?pa=${UPI_ID}&pn=FreshMeat&am=${SUBSCRIPTION_PRICE}&cu=INR&tn=24hr%20access%20pass`;
-  const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiLink)}`;
+  let selectedTier = TIERS[0];
 
-  showOverlay(`
-    <div style="background:#F7F1EA; border-radius:16px; padding:28px; max-width:340px; text-align:center; font-family:'Inter',sans-serif;">
-      <h2 style="margin:0 0 8px;">Free trial ended</h2>
-      <p style="color:#8A6F5C; margin:0 0 16px;">Pay ₹${SUBSCRIPTION_PRICE} for 24 hours of access</p>
-      <img src="${qrImgSrc}" alt="UPI QR code" style="width:200px; height:200px; margin-bottom:16px; border-radius:8px;" />
-      <p style="font-size:13px; color:#8A6F5C; margin:0 0 16px;">Scan with any UPI app, then confirm below</p>
-      <button id="fm-paid-btn" style="width:100%; padding:12px; background:#7A2323; color:white; border:none; border-radius:8px; font-size:16px;">I've paid</button>
-    </div>
-  `);
+  function render() {
+    const upiLink = `upi://pay?pa=${PLATFORM_UPI_ID}&pn=FreshMeat&am=${selectedTier.price}&cu=INR&tn=${encodeURIComponent(selectedTier.label + " access pass")}`;
+    const qrImgSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiLink)}`;
 
-  document.getElementById("fm-paid-btn").addEventListener("click", async () => {
-    await markPaid(phone);
-    removeOverlay();
-  });
+    showOverlay(`
+      <div style="background:#F7F1EA; border-radius:16px; padding:28px; max-width:340px; text-align:center; font-family:'Inter',sans-serif;">
+        <h2 style="margin:0 0 8px;">Free trial ended</h2>
+        <p style="color:#8A6F5C; margin:0 0 16px;">Choose an access plan</p>
+        <div id="fm-tier-list">${renderTierOptionsHtml(selectedTier.id)}</div>
+        <img src="${qrImgSrc}" alt="UPI QR code" style="width:200px; height:200px; margin:8px 0 16px; border-radius:8px;" />
+        <p style="font-size:13px; color:#8A6F5C; margin:0 0 16px;">Scan with any UPI app to pay ₹${selectedTier.price} for ${selectedTier.label.toLowerCase()}, then confirm below</p>
+        <button id="fm-paid-btn" style="width:100%; padding:12px; background:#7A2323; color:white; border:none; border-radius:8px; font-size:16px;">I've paid</button>
+      </div>
+    `);
+
+    document.querySelectorAll('input[name="fm-tier"]').forEach(input => {
+      input.addEventListener("change", (e) => {
+        selectedTier = TIERS.find(t => t.id === e.target.value) || TIERS[0];
+        render();
+      });
+    });
+
+    document.getElementById("fm-paid-btn").addEventListener("click", async () => {
+      await markPaid(phone, selectedTier);
+      removeOverlay();
+    });
+  }
+
+  render();
 }
 
 async function checkAccess() {
@@ -188,18 +201,6 @@ async function checkAccess() {
     showPhoneEntryScreen();
     return;
   }
-  // On a fresh page load (not right after OTP verify), also wait for
-  // Firebase Auth to finish restoring the persisted session before
-  // touching Firestore, for the same race-condition reason as above.
-  const debugUser = await waitForAuthUser();
-  console.log("DEBUG auth.currentUser:", debugUser);
-  console.log("DEBUG uid:", debugUser && debugUser.uid);
-  console.log("DEBUG phoneNumber on user object:", debugUser && debugUser.phoneNumber);
-  if (debugUser) {
-    const tokenResult = await debugUser.getIdTokenResult(true);
-    console.log("DEBUG ID token claims:", tokenResult.claims);
-  }
-  console.log("DEBUG phone variable used as doc ID:", phone);
   const trialData = await getOrCreateTrialDoc(phone);
   if (!isAccessAllowed(trialData)) {
     showPaywallScreen(phone);
