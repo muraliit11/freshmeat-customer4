@@ -225,3 +225,9 @@ async function checkAccess() {
 }
 
 checkAccess();
+
+// Re-check periodically so a tab that's already open gets paywalled the
+// moment the trial (or paid access) expires, instead of only on the next
+// full page reload.
+setInterval(checkAccess, 15000); // every 15s();
+
