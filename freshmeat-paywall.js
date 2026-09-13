@@ -228,6 +228,11 @@ checkAccess();
 
 // Re-check periodically so a tab that's already open gets paywalled the
 // moment the trial (or paid access) expires, instead of only on the next
-// full page reload.
-setInterval(checkAccess, 15000); // every 15s();
+// full page reload. Only poll once the phone is verified — polling before
+// that would re-render (and reset) the phone/OTP entry screens mid-typing.
+setInterval(() => {
+  if (getVerifiedPhone()) {
+    checkAccess();
+  }
+}, 15000); // every 15s
 
