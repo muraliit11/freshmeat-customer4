@@ -205,42 +205,11 @@ function showPaywallScreen(phone) {
 
     document.getElementById("fm-paid-btn").addEventListener("click", async () => {
       await markPaid(phone, selectedTier);
-      showDeliveryChoiceScreen();
+      removeOverlay();
     });
   }
 
   render();
-}
-
-function showDeliveryChoiceScreen() {
-  showOverlay(`
-    <div style="background:#F7F1EA; border-radius:16px; padding:28px; max-width:340px; text-align:center; font-family:'Inter',sans-serif;">
-      <h2 style="margin:0 0 8px;">Payment confirmed 🎉</h2>
-      <p style="color:#8A6F5C; margin:0 0 20px;">How would you like your order?</p>
-      <button id="fm-handcarry-btn" style="width:100%; padding:12px; background:#7A2323; color:white; border:none; border-radius:8px; font-size:16px; margin-bottom:10px;">Hand Carry</button>
-      <button id="fm-courier-btn" style="width:100%; padding:12px; background:#7A2323; color:white; border:none; border-radius:8px; font-size:16px;">Courier</button>
-    </div>
-  `);
-
-  document.getElementById("fm-handcarry-btn").addEventListener("click", async () => {
-    await saveDeliveryChoice("Hand Carry");
-    removeOverlay();
-  });
-  document.getElementById("fm-courier-btn").addEventListener("click", async () => {
-    await saveDeliveryChoice("Courier");
-    removeOverlay();
-  });
-}
-
-async function saveDeliveryChoice(method) {
-  const phone = getVerifiedPhone();
-  if (!phone) return;
-  try {
-    const ref = doc(db, "trials", phone);
-    await setDoc(ref, { deliveryMethod: method }, { merge: true });
-  } catch (err) {
-    console.error("Could not save delivery choice:", err);
-  }
 }
 
 async function checkAccess() {
