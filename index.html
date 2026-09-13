@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1126,9 +1127,26 @@ function loadState() {
     document.getElementById("overlay").classList.remove("open");
   }
 
-  function openPayModal() {
+  // --- Paywall guard: called before opening the pay modal AND before
+  // recording payment. If the phone's trial/access has expired, this shows
+  // the paywall overlay (via freshmeat-paywall.js) and returns false so the
+  // caller aborts — this is what actually blocks checkout, not just the
+  // overlay's own periodic display.
+  async function paywallAllows() {
+    if (typeof window.fmCheckAccessBlocking !== "function") {
+      // Paywall script not loaded/ready — fail safe by allowing, so a
+      // transient load hiccup doesn't lock out a legitimately-paid customer.
+      return true;
+    }
+    return window.fmCheckAccessBlocking();
+  }
+
+  async function openPayModal() {
     const total = totalAmount();
     if (total === 0) return;
+    if (!(await paywallAllows())) {
+      return; // trial/access expired — paywall shown instead, checkout aborted
+    }
     document.getElementById("pay-amount").textContent = "₹" + total;
     document.getElementById("pay-invoice-no").textContent = currentInvoice ? currentInvoice.no : "";
     document.getElementById("payee-name").textContent = UPI_NAME;
@@ -1148,7 +1166,13 @@ function loadState() {
   function closePayModal() {
     document.getElementById("pay-modal").classList.remove("open");
   }
-  function markPaid() {
+  async function markPaid() {
+    // Second guard: covers the case where the trial/access expires in the
+    // gap between opening the pay modal and clicking "I've paid".
+    if (!(await paywallAllows())) {
+      closePayModal();
+      return; // don't record the sale — access expired mid-checkout
+    }
     if (currentInvoice) {
       const items = Object.entries(cart).map(([id, qty]) => {
         const p = PRODUCTS.find((x) => x.id === id);
