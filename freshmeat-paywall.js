@@ -224,6 +224,25 @@ async function checkAccess() {
   }
 }
 
+// Exposed for index.html to call before allowing checkout (opening the pay
+// modal, or recording a payment). Re-checks trial status on demand and, if
+// access has expired, shows the paywall overlay and tells the caller to
+// abort — this is what actually blocks checkout, not just the visual
+// overlay from the periodic checkAccess() poll below.
+window.fmCheckAccessBlocking = async function () {
+  const phone = getVerifiedPhone();
+  if (!phone) {
+    showPhoneEntryScreen();
+    return false;
+  }
+  const trialData = await getOrCreateTrialDoc(phone);
+  if (!isAccessAllowed(trialData)) {
+    showPaywallScreen(phone);
+    return false;
+  }
+  return true;
+};
+
 checkAccess();
 
 // Re-check periodically so a tab that's already open gets paywalled the
@@ -235,4 +254,3 @@ setInterval(() => {
     checkAccess();
   }
 }, 15000); // every 15s
-
