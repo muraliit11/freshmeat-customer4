@@ -660,6 +660,15 @@
   </div>
 </div>
 
+<div class="pay-modal" id="delivery-modal">
+  <div class="pay-box">
+    <h3>Payment confirmed 🎉</h3>
+    <div style="color:var(--muted); font-size:14px; margin:6px 0 20px;">How would you like your order?</div>
+    <button class="done-btn" onclick="chooseDelivery('Hand Carry')">Hand Carry</button>
+    <button class="done-btn" onclick="chooseDelivery('Courier')">Courier</button>
+  </div>
+</div>
+
 <div class="admin-modal" id="admin-modal">
   <div class="admin-box">
     <h3>Enter admin password</h3>
@@ -770,6 +779,7 @@
   let invoiceCounter = 1;
   let currentInvoice = null;
   let billHistory = [];
+  let pendingDeliveryBill = null; // the bill entry awaiting a Hand Carry / Courier choice
 
   // --- Persistence (localStorage: automatic, survives refresh on this browser) ---
   const STORAGE_KEY = "freshmeat-state-v1";
@@ -1178,14 +1188,17 @@ function loadState() {
         const p = PRODUCTS.find((x) => x.id === id);
         return { name: p.name, qty, price: p.price };
       });
-      billHistory.unshift({
+      const billEntry = {
         no: currentInvoice.no,
         date: currentInvoice.date,
         time: currentInvoice.time,
         total: totalAmount(),
         items,
-      });
+        deliveryMethod: null,
+      };
+      billHistory.unshift(billEntry);
       invoiceCounter++;
+      pendingDeliveryBill = billEntry;
     }
     for (const id of Object.keys(cart)) {
       delete cart[id];
@@ -1195,9 +1208,22 @@ function loadState() {
     updateBadge();
     renderDrawer();
     closePayModal();
-    closeDrawer();
     saveState();
     showToast("Payment recorded.");
+    if (pendingDeliveryBill) {
+      document.getElementById("delivery-modal").classList.add("open");
+    } else {
+      closeDrawer();
+    }
+  }
+  function chooseDelivery(method) {
+    if (pendingDeliveryBill) {
+      pendingDeliveryBill.deliveryMethod = method;
+      pendingDeliveryBill = null;
+      saveState();
+    }
+    document.getElementById("delivery-modal").classList.remove("open");
+    closeDrawer();
   }
   function copyUpi() {
     navigator.clipboard.writeText(UPI_ID);
@@ -1219,7 +1245,7 @@ function loadState() {
     list.innerHTML = billHistory.map((h) => `
       <div class="history-item">
         <div class="h-top"><span>${h.no}</span><span>₹${h.total}</span></div>
-        <div class="h-sub">${h.date} · ${h.time} · ${h.items.length} item${h.items.length > 1 ? "s" : ""}</div>
+        <div class="h-sub">${h.date} · ${h.time} · ${h.items.length} item${h.items.length > 1 ? "s" : ""}${h.deliveryMethod ? " · " + h.deliveryMethod : ""}</div>
       </div>
     `).join("");
   }
